@@ -26,12 +26,14 @@ from lms.djangoapps.discussion.django_comment_client.base.views import (
 from lms.djangoapps.discussion.django_comment_client.utils import (
     get_accessible_discussion_xblocks,
     get_group_id_for_user,
-    is_commentable_divided
+    is_commentable_divided,
+    has_discussion_privileges
 )
 from lms.djangoapps.discussion.rest_api.exceptions import (
     CommentNotFoundError,
+    ThreadNotFoundError,
     DiscussionDisabledError,
-    ThreadNotFoundError
+    DiscussionBlackedOutException
 )
 from lms.djangoapps.discussion.rest_api.forms import CommentActionsForm, ThreadActionsForm
 from lms.djangoapps.discussion.rest_api.pagination import DiscussionAPIPagination
@@ -47,6 +49,7 @@ from lms.djangoapps.discussion.rest_api.serializers import (
     ThreadSerializer,
     get_context
 )
+from lms.djangoapps.discussion.rest_api.utils import is_course_discussion_in_blackout
 from openedx.core.djangoapps.django_comment_common.comment_client.comment import Comment
 from openedx.core.djangoapps.django_comment_common.comment_client.thread import Thread
 from openedx.core.djangoapps.django_comment_common.comment_client.utils import CommentClientRequestError
@@ -62,7 +65,6 @@ from openedx.core.djangoapps.django_comment_common.signals import (
 )
 from openedx.core.djangoapps.django_comment_common.utils import get_course_discussion_settings
 from openedx.core.djangoapps.user_api.accounts.api import get_account_settings
-from openedx.core.djangoapps.user_api.accounts.views import AccountViewSet
 from openedx.core.lib.exceptions import CourseNotFoundError, DiscussionNotFoundError, PageNotFoundError
 
 
@@ -868,6 +870,9 @@ def create_thread(request, thread_data):
     except InvalidKeyError:
         raise ValidationError({"course_id": ["Invalid value."]})
 
+    if is_course_discussion_in_blackout(course) and not has_discussion_privileges(user, course_id):
+        raise DiscussionBlackedOutException
+
     context = get_context(course, request)
     _check_initializable_thread_fields(thread_data, context)
     discussion_settings = get_course_discussion_settings(course_key)
@@ -913,8 +918,13 @@ def create_comment(request, comment_data):
         raise ValidationError({"thread_id": ["This field is required."]})
     cc_thread, context = _get_thread_and_context(request, thread_id)
 
+    course = context["course"]
+    user = context["cc_requester"]
+    if is_course_discussion_in_blackout(course) and not has_discussion_privileges(user, course.id):
+        raise DiscussionBlackedOutException
+
     # if a thread is closed; no new comments could be made to it
-    if cc_thread['closed']:
+    if cc_thread["closed"]:
         raise PermissionDenied
 
     _check_initializable_comment_fields(comment_data, context)
