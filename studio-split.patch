@@ -1,0 +1,653 @@
+From 033b42b758141f82766cddd6df2945b830a10d92 Mon Sep 17 00:00:00 2001
+From: Giulio Gratta <giuliog@stanford.edu>
+Date: Mon, 23 Jan 2017 16:50:52 -0800
+Subject: [PATCH] Split Studio Home page
+
+- Add Libraries page
+- Add SPLIT_STUDIO_HOME setting and get it from config
+- Make library list empty if setting enabled
+- Make JS only work if Studio home NOT split
+---
+ cms/djangoapps/contentstore/views/course.py |  49 ++-
+ cms/static/js/index.js                      |  10 +-
+ cms/templates/index.html                    |  16 +-
+ cms/templates/library_index.html            | 455 ++++++++++++++++++++
+ cms/urls.py                                 |   5 +
+ openedx/stanford/cms/envs/aws.py            |   4 +
+ openedx/stanford/cms/envs/common.py         |   1 +
+ 7 files changed, 535 insertions(+), 5 deletions(-)
+ create mode 100644 cms/templates/library_index.html
+
+diff --git a/cms/djangoapps/contentstore/views/course.py b/cms/djangoapps/contentstore/views/course.py
+index 5d11953e6f71..e4328c809b26 100644
+--- a/cms/djangoapps/contentstore/views/course.py
++++ b/cms/djangoapps/contentstore/views/course.py
+@@ -106,6 +106,7 @@
+ log = logging.getLogger(__name__)
+
+ __all__ = ['course_info_handler', 'course_handler', 'course_listing',
++           'library_listing',
+            'course_info_update_handler', 'course_search_index_handler',
+            'course_rerun_handler',
+            'settings_handler',
+@@ -459,7 +460,10 @@ def course_listing(request):
+     List all courses available to the logged in user
+     """
+     courses, in_process_course_actions = get_courses_accessible_to_user(request)
+-    libraries = _accessible_libraries_list(request.user) if LIBRARIES_ENABLED else []
++    if not settings.SPLIT_STUDIO_HOME and LIBRARIES_ENABLED:
++        libraries = _accessible_libraries_list(request.user)
++    else:
++        libraries = []
+
+     programs_config = ProgramsApiConfig.current()
+     raw_programs = get_programs(request.user) if programs_config.is_studio_tab_enabled else []
+@@ -507,6 +511,7 @@ def format_library_for_view(library):
+
+     return render_to_response('index.html', {
+         'courses': courses,
++        'split_studio_home': settings.SPLIT_STUDIO_HOME,
+         'in_process_course_actions': in_process_course_actions,
+         'libraries_enabled': LIBRARIES_ENABLED,
+         'libraries': [format_library_for_view(lib) for lib in libraries],
+@@ -523,6 +528,48 @@ def format_library_for_view(library):
+     })
+
+
++@login_required
++@ensure_csrf_cookie
++def library_listing(request):
++    """
++    List all Libraries available to the logged in user
++    """
++    libraries = _accessible_libraries_list(request.user) if LIBRARIES_ENABLED else []
++
++    programs_config = ProgramsApiConfig.current()
++    raw_programs = get_programs(request.user) if programs_config.is_studio_tab_enabled else []
++
++    # Sort programs alphabetically by name.
++    # TODO: Support ordering in the Programs API itself.
++    programs = sorted(raw_programs, key=lambda p: p['name'].lower())
++
++    def format_library_for_view(library):
++        """
++        Return a dict of the data which the view requires for each library
++        """
++        return {
++            'display_name': library.display_name,
++            'library_key': unicode(library.location.library_key),
++            'url': reverse_library_url('library_handler', unicode(library.location.library_key)),
++            'org': library.display_org_with_default,
++            'number': library.display_number_with_default,
++            'can_edit': has_studio_write_access(request.user, library.location.library_key),
++        }
++
++    return render_to_response('library_index.html', {
++        'libraries_enabled': LIBRARIES_ENABLED,
++        'libraries': [format_library_for_view(lib) for lib in libraries],
++        'show_new_library_button': LIBRARIES_ENABLED and request.user.is_active,
++        'user': request.user,
++        'request_course_creator_url': reverse('contentstore.views.request_course_creator'),
++        'course_creator_status': _get_course_creator_status(request.user),
++        'allow_unicode_course_id': settings.FEATURES.get('ALLOW_UNICODE_COURSE_ID', False),
++        'is_programs_enabled': programs_config.is_studio_tab_enabled and request.user.is_staff,
++        'programs': programs,
++        'program_authoring_url': reverse('programs'),
++    })
++
++
+ def _get_rerun_link_for_item(course_key):
+     """ Returns the rerun link for the given course key. """
+     return reverse_course_url('course_rerun_handler', course_key)
+diff --git a/cms/static/js/index.js b/cms/static/js/index.js
+index 8f8d74eb2f77..eb22bc757255 100644
+--- a/cms/static/js/index.js
++++ b/cms/static/js/index.js
+@@ -158,8 +158,14 @@ define(["domReady", "jquery", "underscore", "js/utils/cancel_on_escape", "js/vie
+
+             $('.action-reload').bind('click', ViewUtils.reload);
+
+-            $('#course-index-tabs .courses-tab').bind('click', showTab('courses'));
+-            $('#course-index-tabs .libraries-tab').bind('click', showTab('libraries'));
++            var courseTabHref = $('#course-index-tabs .courses-tab a').attr('href');
++            if (!courseTabHref) {
++                $('#course-index-tabs .courses-tab').bind('click', showTab('courses'));
++            }
++            var libraryTabHref = $('#course-index-tabs .libraries-tab a').attr('href');
++            if (!libraryTabHref) {
++                $('#course-index-tabs .libraries-tab').bind('click', showTab('libraries'));
++            }
+             $('#course-index-tabs .programs-tab').bind('click', showTab('programs'));
+         };
+
+diff --git a/cms/templates/index.html b/cms/templates/index.html
+index 2496fcad9cca..bf571e9e5588 100644
+--- a/cms/templates/index.html
++++ b/cms/templates/index.html
+@@ -280,10 +280,22 @@ <h3 class="course-title">${course_info['display_name'] | h}</h3>
+
+       % if libraries_enabled or is_programs_enabled:
+       <ul id="course-index-tabs">
+-        <li class="courses-tab active"><a>${_("Courses")}</a></li>
++        <li class="courses-tab active">
++          % if split_studio_home:
++            <a href="/home">${_("Courses")}</a>
++          % else:
++            <a>${_("Courses")}</a>
++          % endif
++        </li>
+
+         % if libraries_enabled:
+-          <li class="libraries-tab"><a>${_("Libraries")}</a></li>
++          <li class="libraries-tab">
++            % if split_studio_home:
++              <a href="/home_library">${_("Libraries")}</a>
++            % else:
++              <a>${_("Libraries")}</a>
++            % endif
++          </li>
+         % endif
+
+         % if is_programs_enabled:
+diff --git a/cms/templates/library_index.html b/cms/templates/library_index.html
+new file mode 100644
+index 000000000000..4d71a5c36763
+--- /dev/null
++++ b/cms/templates/library_index.html
+@@ -0,0 +1,455 @@
++<%! from django.utils.translation import ugettext as _ %>
++
++<%inherit file="base.html" />
++
++<%def name="online_help_token()"><% return "home" %></%def>
++<%block name="title">${_("{studio_name} Libraries").format(studio_name=settings.STUDIO_SHORT_NAME)}</%block>
++<%block name="bodyclass">is-signedin index view-dashboard</%block>
++
++<%block name="requirejs">
++  require(["js/factories/index"], function (IndexFactory) {
++      IndexFactory();
++  });
++</%block>
++
++<%block name="content">
++<div class="wrapper-mast wrapper">
++  <header class="mast has-actions">
++    <h1 class="page-header">${_("{studio_name} Libraries").format(studio_name=settings.STUDIO_SHORT_NAME)}</h1>
++
++    % if user.is_active:
++    <nav class="nav-actions" aria-label="${_('Page Actions')}">
++      <h3 class="sr">${_("Page Actions")}</h3>
++      <ul>
++        <li class="nav-item">
++          % if course_creator_status=='granted':
++          <a href="#" class="button new-button new-course-button"><i class="icon fa fa-plus icon-inline"></i>
++              ${_("New Course")}</a>
++          % elif course_creator_status=='disallowed_for_this_site' and settings.FEATURES.get('STUDIO_REQUEST_EMAIL',''):
++          <a href="mailto:${settings.FEATURES.get('STUDIO_REQUEST_EMAIL','')}">${_("Email staff to create course")}</a>
++          % endif
++
++          % if show_new_library_button:
++            <a href="#" class="button new-button new-library-button"><i class="icon fa fa-plus icon-inline"></i>
++            ${_("New Library")}</a>
++          % endif
++
++          % if is_programs_enabled:
++            <a href=${program_authoring_url + 'new'} class="button new-button new-program-button"><i class="icon fa fa-plus icon-inline"></i>
++            ${_("New Program")}</a>
++          % endif
++        </li>
++      </ul>
++    </nav>
++    % endif
++  </header>
++</div>
++
++<div class="wrapper-content wrapper">
++  % if user.is_active:
++  <section class="content">
++    <article class="content-primary" role="main">
++
++      % if course_creator_status=='granted':
++      <div class="wrapper-create-element wrapper-create-course">
++        <form class="form-create create-course course-info" id="create-course-form" name="create-course-form">
++          <div class="wrap-error">
++            <div id="course_creation_error" name="course_creation_error" class="message message-status message-status error" role="alert">
++            <p>${_("Please correct the highlighted fields below.")}</p>
++            </div>
++          </div>
++
++          <div class="wrapper-form">
++            <h3 class="title">${_("Create a New Course")}</h3>
++
++            <fieldset>
++              <legend class="sr">${_("Required Information to Create a New Course")}</legend>
++
++              <ol class="list-input">
++                <li class="field text required" id="field-course-name">
++                  <label for="new-course-name">${_("Course Name")}</label>
++                  ## Translators: This is an example name for a new course, seen when
++                  ## filling out the form to create a new course.
++                  <input class="new-course-name" id="new-course-name" type="text" name="new-course-name" required placeholder="${_('e.g. Introduction to Computer Science')}" aria-describedby="tip-new-course-name tip-error-new-course-name" />
++                  <span class="tip" id="tip-new-course-name">${_("The public display name for your course. This cannot be changed, but you can set a different display name in Advanced Settings later.")}</span>
++                  <span class="tip tip-error is-hiding" id="tip-error-new-course-name"></span>
++                </li>
++                <li class="field text required" id="field-organization">
++                  <label for="new-course-org">${_("Organization")}</label>
++                  ## Translators: This is an example for the name of the organization sponsoring a course, seen when filling out the form to create a new course. The organization name cannot contain spaces.
++                  ## Translators: "e.g. UniversityX or OrganizationX" is a placeholder displayed when user put no data into this field.
++                  <input class="new-course-org" id="new-course-org" type="text" name="new-course-org" required placeholder="${_('e.g. UniversityX or OrganizationX')}" aria-describedby="tip-new-course-org tip-error-new-course-org" />
++                  <span class="tip" id="tip-new-course-org">${_("The name of the organization sponsoring the course.")}  <strong>${_("Note: The organization name is part of the course URL")}</strong> ${_("This cannot be changed, but you can set a different display name in Advanced Settings later.")}</span>
++                  <span class="tip tip-error is-hiding" id="tip-error-new-course-org"></span>
++                </li>
++
++                <li class="field text required" id="field-course-number">
++                  <label for="new-course-number">${_("Course Number")}</label>
++                  ## Translators: This is an example for the number used to identify a course,
++                  ## seen when filling out the form to create a new course. The number here is
++                  ## short for "Computer Science 101". It can contain letters but cannot contain spaces.
++                  <input class="new-course-number" id="new-course-number" type="text" name="new-course-number" required placeholder="${_('e.g. CS101')}" aria-describedby="tip-new-course-number tip-error-new-course-number" />
++                  <span class="tip" id="tip-new-course-number">${_("The unique number that identifies your course within your organization.")} <strong>${_("Note: This is part of your course URL, so no spaces or special characters are allowed and it cannot be changed.")}</strong></span>
++                  <span class="tip tip-error is-hiding" id="tip-error-new-course-number"></span>
++                </li>
++
++                <li class="field text required" id="field-course-run">
++                  <label for="new-course-run">${_("Course Run")}</label>
++                  ## Translators: This is an example for the "run" used to identify different
++                  ## instances of a course, seen when filling out the form to create a new course.
++                  <input class="new-course-run" id="new-course-run" type="text" name="new-course-run" required placeholder="${_('e.g. 2014_T1')}" aria-describedby="tip-new-course-run tip-error-new-course-run" />
++                  <span class="tip" id="tip-new-course-run">${_("The term in which your course will run.")} <strong>${_("Note: This is part of your course URL, so no spaces or special characters are allowed and it cannot be changed.")}</strong></span>
++                  <span class="tip tip-error is-hiding" id="tip-error-new-course-run"></span>
++                </li>
++              </ol>
++
++            </fieldset>
++          </div>
++
++          <div class="actions">
++            <input type="hidden" value="${allow_unicode_course_id}" class="allow-unicode-course-id" />
++            <input type="submit" value="${_('Create')}" class="action action-primary new-course-save" />
++            <input type="button" value="${_('Cancel')}" class="action action-secondary action-cancel new-course-cancel" />
++          </div>
++        </form>
++      </div>
++
++      % endif
++
++      %if libraries_enabled and show_new_library_button:
++      <div class="wrapper-create-element wrapper-create-library">
++        <form class="form-create create-library library-info" id="create-library-form" name="create-library-form">
++          <div class="wrap-error">
++            <div id="library_creation_error" name="library_creation_error" class="message message-status message-status error" role="alert">
++            <p>${_("Please correct the highlighted fields below.")}</p>
++            </div>
++          </div>
++
++          <div class="wrapper-form">
++            <h3 class="title">${_("Create a New Library")}</h3>
++
++            <fieldset>
++              <legend class="sr">${_("Required Information to Create a New Library")}</legend>
++
++              <ol class="list-input">
++                <li class="field text required" id="field-library-name">
++                  <label for="new-library-name">${_("Library Name")}</label>
++                  ## Translators: This is an example name for a new content library, seen when
++                  ## filling out the form to create a new library.
++                  ## (A library is a collection of content or problems.)
++                  <input class="new-library-name" id="new-library-name" type="text" name="new-library-name" required placeholder="${_('e.g. Computer Science Problems')}" aria-describedby="tip-new-library-name tip-error-new-library-name" />
++                  <span class="tip" id="tip-new-library-name">${_("The public display name for your library.")}</span>
++                  <span class="tip tip-error is-hiding" id="tip-error-new-library-name"></span>
++                </li>
++                <li class="field text required" id="field-organization">
++                  <label for="new-library-org">${_("Organization")}</label>
++                  <input class="new-library-org" id="new-library-org" type="text" name="new-library-org" required placeholder="${_('e.g. UniversityX or OrganizationX')}" aria-describedby="tip-new-library-org tip-error-new-library-org" />
++                  <span class="tip" id="tip-new-library-org">${_("The public organization name for your library.")} ${_("This cannot be changed.")}</span>
++                  <span class="tip tip-error is-hiding" id="tip-error-new-library-org"></span>
++                </li>
++
++                <li class="field text required" id="field-library-number">
++                  <label for="new-library-number">${_("Library Code")}</label>
++                  ## Translators: This is an example for the "code" used to identify a library,
++                  ## seen when filling out the form to create a new library. This example is short
++                  ## for "Computer Science Problems". The example number may contain letters
++                  ## but must not contain spaces.
++                  <input class="new-library-number" id="new-library-number" type="text" name="new-library-number" required placeholder="${_('e.g. CSPROB')}" aria-describedby="tip-new-library-number tip-error-new-library-number" />
++                  <span class="tip" id="tip-new-library-number">${_("The unique code that identifies this library.")} <strong>${_("Note: This is part of your library URL, so no spaces or special characters are allowed.")}</strong> ${_("This cannot be changed.")}</span>
++                  <span class="tip tip-error is-hiding" id="tip-error-new-library-number"></span>
++                </li>
++              </ol>
++
++            </fieldset>
++          </div>
++
++          <div class="actions">
++            <input type="hidden" value="${allow_unicode_course_id}" class="allow-unicode-course-id" />
++            <input type="submit" value="${_('Create')}" class="action action-primary new-library-save" />
++            <input type="button" value="${_('Cancel')}" class="action action-secondary action-cancel new-library-cancel" />
++          </div>
++        </form>
++      </div>
++      % endif
++
++      % if libraries_enabled or is_programs_enabled:
++      <ul id="course-index-tabs">
++        <li class="courses-tab"><a href="/home">${_("Courses")}</a></li>
++
++        % if libraries_enabled:
++          <li class="libraries-tab active"><a href="/home_library">${_("Libraries")}</a></li>
++        % endif
++
++        % if is_programs_enabled:
++          <li class="programs-tab"><a>${_("Programs")}</a></li>
++        % endif
++      </ul>
++      % endif
++
++
++      %if course_creator_status == "unrequested":
++      <div class="wrapper wrapper-creationrights">
++        <h3 class="title">
++          <a href="#instruction-creationrights" class="ui-toggle-control show-creationrights"><span class="label">${_('Becoming a Course Creator in {studio_name}').format(studio_name=settings.STUDIO_SHORT_NAME)}</span> <i class="icon fa fa-times-circle"></i></a>
++        </h3>
++
++        <div class="notice notice-incontext notice-instruction notice-instruction-creationrights ui-toggle-target" id="instruction-creationrights">
++          <div class="copy">
++            <p>${_('{studio_name} is a hosted solution for our xConsortium partners and selected guests. Courses for which you are a team member appear above for you to edit, while course creator privileges are granted by {platform_name}. Our team will evaluate your request and provide you feedback within 24 hours during the work week.').format(
++              studio_name=settings.STUDIO_NAME, platform_name=settings.PLATFORM_NAME)}</p>
++          </div>
++
++          <div class="status status-creationrights is-unrequested">
++            <h4 class="title">${_('Your Course Creator Request Status:')}</h4>
++
++            <form id="request-coursecreator" action="${request_course_creator_url}" method="post" enctype="multipart/form-data">
++              <div class="form-actions">
++                <button type="submit" id="request-coursecreator-submit" name="request-coursecreator-submit" class="action-primary action-request"><i class="icon fa fa-cog icon-inline fa fa-spin"></i> <span class="label">${_('Request the Ability to Create Courses')}</span></button>
++              </div>
++            </form>
++          </div>
++        </div>
++      </div>
++
++      %elif course_creator_status == "denied":
++      <div class="wrapper wrapper-creationrights is-shown">
++        <h3 class="title">
++          <a href="#instruction-creationrights" class="ui-toggle-control current show-creationrights"><span class="label">${_('Your Course Creator Request Status')}</span> <i class="icon fa fa-times-circle"></i></a>
++        </h3>
++
++        <div class="notice notice-incontext notice-instruction notice-instruction-creationrights ui-toggle-target" id="instruction-creationrights">
++          <div class="copy">
++            <p>${_('{studio_name} is a hosted solution for our xConsortium partners and selected guests. Courses for which you are a team member appear above for you to edit, while course creator privileges are granted by {platform_name}. Our team is has completed evaluating your request.').format(
++              studio_name=settings.STUDIO_NAME, platform_name=settings.PLATFORM_NAME,
++            )}</p>
++          </div>
++
++          <div class="status status-creationrights has-status is-denied">
++            <h4 class="title">${_('Your Course Creator Request Status:')}</h4>
++
++            <dl class="status-update">
++              <dt class="label">${_('Your Course Creator request is:')}</dt>
++              <dd class="value">
++                <span class="status-indicator"></span>
++                <span class="value-formal">${_('Denied')}</span>
++                <span class="value-description">${_('Your request did not meet the criteria/guidelines specified by {platform_name} Staff.').format(platform_name=settings.PLATFORM_NAME)}</span>
++              </dd>
++            </dl>
++          </div>
++        </div>
++      </div>
++
++      %elif course_creator_status == "pending":
++      <div class="wrapper wrapper-creationrights is-shown">
++        <h3 class="title">
++          <a href="#instruction-creationrights" class="ui-toggle-control current show-creationrights"><span class="label">${_('Your Course Creator Request Status')}</span> <i class="icon fa fa-times-circle"></i></a>
++        </h3>
++
++        <div class="notice notice-incontext notice-instruction notice-instruction-creationrights ui-toggle-target" id="instruction-creationrights">
++          <div class="copy">
++            <p>${_('{studio_name} is a hosted solution for our xConsortium partners and selected guests. Courses for which you are a team member appear above for you to edit, while course creator privileges are granted by {platform_name}. Our team is currently  evaluating your request.').format(
++              studio_name=settings.STUDIO_NAME, platform_name=settings.PLATFORM_NAME,
++            )}</p>
++          </div>
++
++          <div class="status status-creationrights has-status is-pending">
++            <h4 class="title">${_('Your Course Creator Request Status:')}</h4>
++
++            <dl class="status-update">
++              <dt class="label">${_('Your Course Creator request is:')}</dt>
++              <dd class="value">
++                <span class="status-indicator"></span>
++                <span class="value-formal">${_('Pending')}</span>
++                <span class="value-description">
++                  ${_('Your request is currently being reviewed by {platform_name} staff and should be updated shortly.').format(platform_name=settings.PLATFORM_NAME)}
++                </span>
++              </dd>
++            </dl>
++          </div>
++        </div>
++      </div>
++      % endif
++
++      %if len(libraries) > 0:
++      <div class="libraries libraries-tab active">
++        <ul class="list-courses">
++          %for library_info in sorted(libraries, key=lambda s: s['display_name'].lower() if s['display_name'] is not None else ''):
++          <li class="course-item">
++            <a class="library-link" href="${library_info['url']}">
++              <h3 class="course-title">${library_info['display_name'] | h}</h3>
++
++              <div class="course-metadata">
++                <span class="course-org metadata-item">
++                  <span class="label">${_("Organization:")}</span> <span class="value">${library_info['org']}</span>
++                </span>
++                <span class="course-num metadata-item">
++                  <span class="label">${_("Course Number:")}</span>
++                  <span class="value">${library_info['number']}</span>
++                </span>
++                % if not library_info["can_edit"]:
++                  <span class="extra-metadata">${_("(Read-only)")}</span>
++                % endif
++              </div>
++            </a>
++          </li>
++          %endfor
++        </ul>
++      </div>
++
++      %else:
++      <div class="notice notice-incontext notice-instruction notice-instruction-nocourses list-notices libraries-tab">
++        <div class="notice-item">
++          <div class="msg">
++              <h3 class="title">${_("Were you expecting to see a particular library here?")}</h3>
++              <div class="copy">
++                  <p>${_('The library creator must give you access to the library. Contact the library creator or administrator for the library you are helping to author.')}</p>
++              </div>
++          </div>
++        </div>
++        % if show_new_library_button:
++        <div class="notice-item has-actions">
++          <div class="msg">
++              <h3 class="title">${_('Create Your First Library')}</h3>
++              <div class="copy">
++                  <p>${_('Libraries hold a pool of components that can be re-used across multiple courses. Create your first library with the click of a button!')}</p>
++              </div>
++          </div>
++
++        <ul class="list-actions">
++          <li class="action-item">
++              <a href="#" class="action-primary action-create new-button action-create-library new-library-button"><i class="icon fa fa-plus icon-inline"></i> ${_('Create Your First Library')}</a>
++          </li>
++        </ul>
++        </div>
++        % endif
++      </div>
++      %endif
++
++      % if is_programs_enabled:
++        % if len(programs) > 0:
++          <div class="programs programs-tab">
++            <!-- Classes related to courses are intentionally reused here, to duplicate the styling used for course listing. -->
++            <ul class="list-courses">
++              % for program in programs:
++              <li class="course-item">
++
++                <a class="program-link" href=${program_authoring_url + str(program['id'])}>
++                  <h3 class="course-title">${program['name'] | h}</h3>
++
++                  <div class="course-metadata">
++                    <span class="course-org metadata-item">
++                      <!-- As of this writing, programs can only be owned by one organization. If that constraint is relaxed, this will need to be revisited. -->
++                      <span class="label">${_("Organization:")}</span> <span class="value">${program['organizations'][0]['key'] | h}</span>
++                    </span>
++                  </div>
++                </a>
++
++              </li>
++              % endfor
++            </ul>
++          </div>
++
++        % else:
++          <div class="notice notice-incontext notice-instruction notice-instruction-nocourses list-notices programs-tab">
++            <div class="notice-item has-actions">
++
++              <div class="msg">
++                <h3 class="title">${_("You haven't created any programs yet.")}</h3>
++                <div class="copy">
++                  <p>${_("Programs are groups of courses related to a common subject.")}</p>
++                </div>
++              </div>
++
++              <ul class="list-actions">
++                <li class="action-item">
++                  <a href=${program_authoring_url + 'new'} class="action-primary action-create new-button action-create-program new-program-button"><i class="icon fa fa-plus icon-inline"></i> ${_('Create Your First Program')}</a>
++                </li>
++              </ul>
++
++            </div>
++          </div>
++        % endif
++      % endif
++
++    </article>
++    <aside class="content-supplementary" role="complementary">
++      <div class="bit">
++        <h3 class="title title-3">${_('New to {studio_name}?').format(studio_name=settings.STUDIO_NAME)}</h3>
++        <p>${_('Click Help in the upper-right corner to get more information about the {studio_name} page you are viewing. You can also use the links at the bottom of the page to access our continually updated documentation and other {studio_name} resources.').format(studio_name=settings.STUDIO_SHORT_NAME)}</p>
++
++        <ol class="list-actions">
++          <li class="action-item">
++
++            <a href="${get_online_help_info(online_help_token())['doc_url']}" target="_blank">${_("Getting Started with {studio_name}").format(studio_name=settings.STUDIO_NAME)}</a>
++          </li>
++        </ol>
++      </div>
++
++      % if course_creator_status=='disallowed_for_this_site' and settings.FEATURES.get('STUDIO_REQUEST_EMAIL',''):
++      <div class="bit">
++        <h3 class="title title-3">${_("Can I create courses in {studio_name}?").format(studio_name=settings.STUDIO_NAME)}</h3>
++        <p>${_("In order to create courses in {studio_name}, you must {link_start}contact {platform_name} staff to help you create a course{link_end}.").format(
++            studio_name=settings.STUDIO_NAME,
++            platform_name=settings.PLATFORM_NAME,
++            link_start='<a href="mailto:{email}">'.format(email=settings.FEATURES.get('STUDIO_REQUEST_EMAIL','')),
++            link_end="</a>",
++          )}</p>
++      </div>
++      % endif
++
++      % if course_creator_status == "unrequested":
++      <div class="bit">
++        <h3 class="title title-3">${_("Can I create courses in {studio_name}?").format(studio_name=settings.STUDIO_NAME)}</h3>
++        <p>${_('In order to create courses in {studio_name}, you must have course creator privileges to create your own course.').format(studio_name=settings.STUDIO_NAME)}</p>
++      </div>
++
++      % elif course_creator_status == "denied":
++      <div class="bit">
++        <h3 class="title title-3">${_("Can I create courses in {studio_name}?").format(studio_name=settings.STUDIO_NAME)}</h3>
++<%!
++from django.conf import settings
++
++help_link_start = '<a href="mailto:{email}">'.format(email=settings.TECH_SUPPORT_EMAIL)
++help_link_end = '</a>'
++%>
++        <p>${_("Your request to author courses in {studio_name} has been denied. Please {link_start}contact {platform_name} Staff with further questions{link_end}.").format(
++            studio_name=settings.STUDIO_NAME,
++            platform_name=settings.PLATFORM_NAME,
++            link_start=help_link_start,
++            link_end=help_link_end,
++          )}</p>
++      </div>
++
++      % endif
++    </aside>
++  </section>
++
++
++  % else:
++  <section class="content">
++    <article class="content-primary" role="main">
++      <div class="introduction">
++        <h2 class="title">${_("Thanks for signing up, %(name)s!") % dict(name= user.username)}</h2>
++      </div>
++
++      <div class="notice notice-incontext notice-instruction notice-instruction-verification">
++        <div class="msg">
++          <h3 class="title">${_("We need to verify your email address")}</h3>
++          <div class="copy">
++            <p>${_('Almost there! In order to complete your sign up we need you to verify your email address (%(email)s). An activation message and next steps should be waiting for you there.') % dict(email=user.email)}</p>
++          </div>
++        </div>
++      </div>
++    </article>
++
++    <aside class="content-supplementary" role="complementary">
++      <div class="bit">
++        <h3 class="title title-3">${_('Need help?')}</h3>
++        <p>${_('Please check your Junk or Spam folders in case our email isn\'t in your INBOX. Still can\'t find the verification email? Request help via the link below.')}</p>
++      </div>
++    </aside>
++  </section>
++
++  %endif
++</div>
++</%block>
+diff --git a/cms/urls.py b/cms/urls.py
+index 9000d68f6ebe..e786d4a25047 100644
+--- a/cms/urls.py
++++ b/cms/urls.py
+@@ -140,6 +140,11 @@
+         url(r'^backup_signin$', 'contentstore.views.login_page', name='backup_login'),
+     )
+
++if settings.SPLIT_STUDIO_HOME:
++    urlpatterns += (
++        url(r'^home_library/?$', 'library_listing', name='home_library'),
++    )
++
+ if settings.FEATURES.get('ENABLE_EXPORT_GIT'):
+     urlpatterns += (url(
+         r'^export_git/{}$'.format(
+diff --git a/openedx/stanford/cms/envs/aws.py b/openedx/stanford/cms/envs/aws.py
+index 51c429a15408..ce5c130669bc 100644
+--- a/openedx/stanford/cms/envs/aws.py
++++ b/openedx/stanford/cms/envs/aws.py
+@@ -18,6 +18,10 @@
+     'SHIB_REDIRECT_DOMAIN_WHITELIST',
+     SHIB_REDIRECT_DOMAIN_WHITELIST
+ )
++SPLIT_STUDIO_HOME = ENV_TOKENS.get(
++    'SPLIT_STUDIO_HOME',
++    SPLIT_STUDIO_HOME
++)
+ XBLOCKS_ALWAYS_IN_STUDIO = ENV_TOKENS.get(
+     'XBLOCKS_ALWAYS_IN_STUDIO',
+     XBLOCKS_ALWAYS_IN_STUDIO
+diff --git a/openedx/stanford/cms/envs/common.py b/openedx/stanford/cms/envs/common.py
+index a830ed4e17f0..d35c5397176e 100644
+--- a/openedx/stanford/cms/envs/common.py
++++ b/openedx/stanford/cms/envs/common.py
+@@ -48,4 +48,5 @@
+ )
+ SHIB_ONLY_SITE = False
+ SHIB_REDIRECT_DOMAIN_WHITELIST = {}
++SPLIT_STUDIO_HOME = False
+ XBLOCKS_ALWAYS_IN_STUDIO = []
