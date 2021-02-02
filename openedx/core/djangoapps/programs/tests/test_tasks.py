@@ -327,8 +327,8 @@ class AwardProgramCertificatesTestCase(CatalogIntegrationMixin, CredentialsApiCo
                 uuid=1,
                 username=self.student.username)
         )
-        mock_info.assert_any_call(mock.ANY, 1, self.student.username)
-        mock_info.assert_any_call(mock.ANY, 2, self.student.username)
+        mock_info.assert_any_call(f"Awarded certificate for program {1} to user {self.student.username}")
+        mock_info.assert_any_call(f"Awarded certificate for program {2} to user {self.student.username}")
 
     def test_retry_on_programs_api_errors(
         self,
@@ -781,8 +781,8 @@ class RevokeProgramCertificatesTestCase(CatalogIntegrationMixin, CredentialsApiC
                 uuid=1,
                 username=self.student.username)
         )
-        mock_info.assert_any_call(mock.ANY, 1, self.student.username)
-        mock_info.assert_any_call(mock.ANY, 2, self.student.username)
+        mock_info.assert_any_call(f"Revoked certificate for program {1} for user {self.student.username}")
+        mock_info.assert_any_call(f"Revoked certificate for program {2} for user {self.student.username}")
 
     def test_retry_on_credentials_api_errors(
         self,
