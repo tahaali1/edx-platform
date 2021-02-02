@@ -19,7 +19,7 @@ from openedx.core.apidocs import api_info
 from openedx.core.djangoapps.password_policy import compliance as password_policy_compliance
 from openedx.core.djangoapps.password_policy.forms import PasswordPolicyAwareAdminAuthForm
 from openedx.core import toggles as core_toggles
-
+from .djangoapps.contentstore.toggles import split_library_view_on_dashboard
 
 django_autodiscover()
 admin.site.site_header = _('Studio Administration')
@@ -210,7 +210,7 @@ if settings.FEATURES.get('ENABLE_CONTENT_LIBRARIES'):
             contentstore_views.manage_library_users, name='manage_library_users'),
     ]
 
-if settings.SPLIT_STUDIO_HOME:
+if split_library_view_on_dashboard():
     urlpatterns += [
         url(r'^home_library/?$', contentstore_views.library_listing , name='home_library'),
     ]
