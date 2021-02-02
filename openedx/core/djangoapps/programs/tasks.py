@@ -33,6 +33,7 @@ PROGRAM_CERTIFICATE = 'program'
 COURSE_CERTIFICATE = 'course-run'
 VISIBLE_DATE_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
 
+
 def get_completed_programs(site, student):
     """
     Given a set of completed courses, determine which programs are completed.

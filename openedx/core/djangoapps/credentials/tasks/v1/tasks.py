@@ -4,6 +4,7 @@ This file contains celery tasks for credentials-related functionality.
 
 
 from celery import task
+from celery.exceptions import MaxRetriesExceededError
 from celery.utils.log import get_task_logger
 from django.conf import settings
 from django.contrib.auth.models import User
