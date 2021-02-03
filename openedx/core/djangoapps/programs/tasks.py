@@ -200,7 +200,7 @@ def award_program_certificates(self, username):
     except Exception as exc:
         error_msg = f"Failed to determine program certificates to be awarded for user {username}. {exc}"
         LOGGER.exception(error_msg)
-        raise _retry_with_custom_exception(username=username, reason=error_msg, countdown=countdown)
+        raise _retry_with_custom_exception(username=username, reason=error_msg, countdown=countdown) from exc
 
     # For each completed program for which the student doesn't already have a
     # certificate, award one now.
@@ -218,7 +218,7 @@ def award_program_certificates(self, username):
             error_msg = "Failed to create a credentials API client to award program certificates"
             LOGGER.exception(error_msg)
             # Retry because a misconfiguration could be fixed
-            raise _retry_with_custom_exception(username=username, reason=error_msg, countdown=countdown)
+            raise _retry_with_custom_exception(username=username, reason=error_msg, countdown=countdown) from exc
 
         failed_program_certificate_award_attempts = []
         for program_uuid in new_program_uuids:
@@ -245,7 +245,11 @@ def award_program_certificates(self, username):
                     )
                     LOGGER.info(error_msg)
                     # Retry after 60 seconds, when we should be in a new throttling window
-                    raise _retry_with_custom_exception(username=username, reason=error_msg, countdown=rate_limit_countdown)
+                    raise _retry_with_custom_exception(
+                        username=username,
+                        reason=error_msg,
+                        countdown=rate_limit_countdown
+                    ) from exc
                 else:
                     LOGGER.exception(
                         f"Unable to award certificate to user {username} for program {program_uuid}. "
@@ -321,7 +325,9 @@ def award_course_certificate(self, username, course_run_key):
     # mark this task for retry instead of failing it altogether.
 
     if not CredentialsApiConfig.current().is_learner_issuance_enabled:
-        error_msg = "Task award_course_certificate cannot be executed when credentials issuance is disabled in API config"
+        error_msg = (
+            "Task award_course_certificate cannot be executed when credentials issuance is disabled in API config"
+        )
         LOGGER.warning(error_msg)
         raise _retry_with_custom_exception(
             username=username,
@@ -372,7 +378,12 @@ def award_course_certificate(self, username, course_run_key):
     except Exception as exc:
         error_msg = f"Failed to determine course certificates to be awarded for user {username}."
         LOGGER.exception(error_msg)
-        _retry_with_custom_exception(username=username, course_run_key=course_run_key, reason=error_msg, countdown=countdown)
+        raise _retry_with_custom_exception(
+            username=username,
+            course_run_key=course_run_key,
+            reason=error_msg,
+            countdown=countdown
+        )
 
 
 def get_revokable_program_uuids(course_specific_programs, student):
@@ -458,9 +469,16 @@ def revoke_program_certificates(self, username, course_key):
     # mark this task for retry instead of failing it altogether.
 
     if not CredentialsApiConfig.current().is_learner_issuance_enabled:
-        error_msg = "Task revoke_program_certificates cannot be executed when credentials issuance is disabled in API config"
+        error_msg = (
+            "Task revoke_program_certificates cannot be executed when credentials issuance is disabled in API config"
+        )
         LOGGER.warning(error_msg)
-        raise _retry_with_custom_exception(username=username, course_key=course_key, reason=error_msg, countdown=countdown)
+        raise _retry_with_custom_exception(
+            username=username,
+            course_key=course_key,
+            reason=error_msg,
+            countdown=countdown
+        )
 
     try:
         student = User.objects.get(username=username)
@@ -488,7 +506,12 @@ def revoke_program_certificates(self, username, course_key):
             f"with course {course_key}"
         )
         LOGGER.exception(error_msg)
-        raise _retry_with_custom_exception(username=username, course_key=course_key, reason=error_msg, countdown=countdown)
+        raise _retry_with_custom_exception(
+            username=username,
+            course_key=course_key,
+            reason=error_msg,
+            countdown=countdown
+        ) from exc
 
     if program_uuids_to_revoke:
         try:
@@ -499,7 +522,7 @@ def revoke_program_certificates(self, username, course_key):
             error_msg = "Failed to create a credentials API client to revoke program certificates"
             LOGGER.exception(error_msg)
             # Retry because a misconfiguration could be fixed
-            raise _retry_with_custom_exception(username, course_key, exception=exc, countdown=countdown)
+            raise _retry_with_custom_exception(username, course_key, reason=exc, countdown=countdown) from exc
 
         failed_program_certificate_revoke_attempts = []
         for program_uuid in program_uuids_to_revoke:
@@ -529,7 +552,7 @@ def revoke_program_certificates(self, username, course_key):
                         course_key,
                         reason=error_msg,
                         countdown=rate_limit_countdown
-                    )
+                    ) from exc
                 else:
                     LOGGER.exception(f"Unable to revoke certificate for user {username} for program {program_uuid}.")
             except Exception:  # pylint: disable=broad-except

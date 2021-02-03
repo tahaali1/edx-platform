@@ -12,6 +12,8 @@ disable+ =
     no-else-break,
     no-else-continue,
     useless-object-inheritance,
+    # Disable because f-strings are performant and preferred
+    logging-fstring-interpolation,
 
 [BASIC]
 attr-rgx = [a-z_][a-z0-9_]{2,40}$
