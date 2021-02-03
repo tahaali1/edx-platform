@@ -280,6 +280,28 @@ class AwardProgramCertificatesTestCase(CatalogIntegrationMixin, CredentialsApiCo
         self.assertFalse(mock_get_certified_programs.called)
         self.assertFalse(mock_award_program_certificate.called)
 
+    @mock.patch(TASKS_MODULE + '.get_credentials_api_client')
+    def test_failure_to_create_api_client_retries(
+        self,
+        mock_get_api_client,
+        mock_get_completed_programs,
+        mock_get_certified_programs,
+        mock_award_program_certificate
+    ):
+        """
+        Checks that we log an exception and retry if the API client isn't creating.
+        """
+        mock_get_api_client.side_effect = Exception('boom')
+        mock_get_completed_programs.return_value = {1: 1, 2: 2}
+        mock_get_certified_programs.return_value = [2]
+
+        with mock.patch(TASKS_MODULE + '.LOGGER.exception') as mock_exception:
+            with self.assertRaises(MaxRetriesExceededError):
+                tasks.award_program_certificates.delay(self.student.username).get()
+
+        self.assertTrue(mock_exception.called)
+        self.assertEqual(mock_get_api_client.call_count, tasks.MAX_RETRIES + 1)
+
     def _make_side_effect(self, side_effects):
         """
         DRY helper.  Returns a side effect function for use with mocks that
@@ -865,3 +887,26 @@ class RevokeProgramCertificatesTestCase(CatalogIntegrationMixin, CredentialsApiC
         tasks.revoke_program_certificates.delay(self.student.username, self.course_key).get()
 
         self.assertEqual(mock_revoke_program_certificate.call_count, 2)
+
+    def test_get_api_client_failure_retries(
+        self,
+        mock_get_inverted_programs,
+        mock_get_certified_programs,
+        mock_revoke_program_certificate,
+    ):
+        """
+        Verify that a 404 error causes the task to fail but there is no retry.
+        """
+        mock_get_inverted_programs.return_value = self.inverted_programs
+        mock_get_certified_programs.return_value = [1, 2]
+
+        with mock.patch(
+            TASKS_MODULE + ".get_credentials_api_client"
+        ) as mock_get_api_client, mock.patch(
+            TASKS_MODULE + '.LOGGER.exception'
+        ) as mock_exception:
+            mock_get_api_client.side_effect = Exception("boom")
+            with self.assertRaises(MaxRetriesExceededError):
+                tasks.revoke_program_certificates.delay(self.student.username, self.course_key).get()
+        self.assertTrue(mock_exception.called)
+        self.assertEqual(mock_get_api_client.call_count, tasks.MAX_RETRIES + 1)
