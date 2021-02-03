@@ -383,7 +383,7 @@ def award_course_certificate(self, username, course_run_key):
             course_run_key=course_run_key,
             reason=error_msg,
             countdown=countdown
-        )
+        ) from exc
 
 
 def get_revokable_program_uuids(course_specific_programs, student):
