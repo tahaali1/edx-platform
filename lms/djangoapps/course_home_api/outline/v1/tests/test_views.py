@@ -276,17 +276,22 @@ class OutlineTabTestViews(BaseCourseHomeTests):
         course = CourseFactory.create()
         with self.store.bulk_operations(course.id):
             chapter = ItemFactory.create(category='chapter', parent_location=course.location)
-            sequential = ItemFactory.create(display_name='Test', category='sequential', graded=True, has_score=True,
+            sequential = ItemFactory.create(display_name='Test', category='sequential', graded=True,
                                             parent_location=chapter.location)
-            problem1 = ItemFactory.create(category='problem', graded=True, has_score=True,
+            sequential.has_score = True
+            problem1 = ItemFactory.create(category='problem', graded=True,
                                           parent_location=sequential.location)
-            problem2 = ItemFactory.create(category='problem', graded=True, has_score=True,
+            problem1.has_score = True
+            problem2 = ItemFactory.create(category='problem', graded=True,
                                           parent_location=sequential.location)
+            problem2.has_score = True
             sequential2 = ItemFactory.create(display_name='Ungraded', category='sequential',
                                              parent_location=chapter.location)
+            problem3 = ItemFactory.create(category='problem', parent_location=sequential2.location)
         course.children = [chapter]
         chapter.children = [sequential, sequential2]
         sequential.children = [problem1, problem2]
+        sequential2.children = [problem3]
         url = reverse('course-home-outline-tab', args=[course.id])
 
         CourseEnrollment.enroll(self.user, course.id)
