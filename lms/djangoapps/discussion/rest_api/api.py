@@ -27,7 +27,6 @@ from lms.djangoapps.discussion.django_comment_client.utils import (
     get_accessible_discussion_xblocks,
     get_group_id_for_user,
     is_commentable_divided,
-    has_discussion_privileges
 )
 from lms.djangoapps.discussion.rest_api.exceptions import (
     CommentNotFoundError,
@@ -49,7 +48,7 @@ from lms.djangoapps.discussion.rest_api.serializers import (
     ThreadSerializer,
     get_context
 )
-from lms.djangoapps.discussion.rest_api.utils import is_course_discussion_in_blackout
+from lms.djangoapps.discussion.rest_api.utils import discussion_closed_for_user
 from openedx.core.djangoapps.django_comment_common.comment_client.comment import Comment
 from openedx.core.djangoapps.django_comment_common.comment_client.thread import Thread
 from openedx.core.djangoapps.django_comment_common.comment_client.utils import CommentClientRequestError
@@ -870,7 +869,7 @@ def create_thread(request, thread_data):
     except InvalidKeyError:
         raise ValidationError({"course_id": ["Invalid value."]})
 
-    if is_course_discussion_in_blackout(course) and not has_discussion_privileges(user, course_id):
+    if discussion_closed_for_user(course, user):
         raise DiscussionBlackedOutException
 
     context = get_context(course, request)
@@ -919,8 +918,7 @@ def create_comment(request, comment_data):
     cc_thread, context = _get_thread_and_context(request, thread_id)
 
     course = context["course"]
-    user = context["cc_requester"]
-    if is_course_discussion_in_blackout(course) and not has_discussion_privileges(user, course.id):
+    if discussion_closed_for_user(course, request.user):
         raise DiscussionBlackedOutException
 
     # if a thread is closed; no new comments could be made to it
@@ -938,7 +936,7 @@ def create_comment(request, comment_data):
     api_comment = serializer.data
     _do_extra_actions(api_comment, cc_comment, list(comment_data.keys()), actions_form, context, request)
 
-    track_comment_created_event(request, context["course"], cc_comment, cc_thread["commentable_id"], followed=False)
+    track_comment_created_event(request, course, cc_comment, cc_thread["commentable_id"], followed=False)
 
     return api_comment
 

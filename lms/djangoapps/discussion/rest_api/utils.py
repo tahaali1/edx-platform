@@ -2,18 +2,15 @@
 Utils for discussion API.
 """
 
-from datetime import datetime
+from lms.djangoapps.discussion.django_comment_client.utils import has_discussion_privileges
 
-from pytz import UTC
-
-
-def is_course_discussion_in_blackout(course):
+def discussion_closed_for_user(course, user):
     """
-    Check if discussion is in blackout period or not.
+    Check if course discussion are closed or not for user.
+    :param course:
+    :param user:
+    :return:
     """
-    discussion_blackout_status = False
-    current_datetime = datetime.now(UTC)
-    for blackout in course.get_discussion_blackout_datetimes():
-        if blackout['start'] < current_datetime < blackout['end']:
-            discussion_blackout_status = True
-    return discussion_blackout_status
+    if not course.forum_posts_allowed and not has_discussion_privileges(user, course.id):
+        return True
+    return False

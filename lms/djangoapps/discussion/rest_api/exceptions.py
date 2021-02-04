@@ -23,4 +23,4 @@ class CommentNotFoundError(ObjectDoesNotExist):
 class DiscussionBlackedOutException(APIException):
     """ Discussions are in blackout period. """
     status_code = 403
-    default_detail = 'Discussion are in black out period.'
+    default_detail = 'Discussions are in black out period.'
