@@ -580,10 +580,12 @@ class Celebration(DeveloperErrorViewMixin, APIView):
         Body consists of the following fields:
 
             * first_section (bool): whether we should celebrate when a user finishes their first section of a course
+            * check_streak (bool): whether we should celebrate a streak such as a 3 day streak
 
     **Returns**
 
         * 200 or 201 or 202 on success with above fields.
+            For the check_streak parameter, the response will include whether the user should see a celebration.
         * 400 if an invalid parameter was sent.
         * 404 if the course is not available or cannot be seen.
     """
@@ -613,6 +615,7 @@ class Celebration(DeveloperErrorViewMixin, APIView):
 
         data = dict(request.data)
         first_section = data.pop('first_section', None)
+        check_streak = data.pop('check_streak', None)
         if data:
             return Response(status=400)  # there were parameters we didn't recognize
 
@@ -620,12 +623,19 @@ class Celebration(DeveloperErrorViewMixin, APIView):
         if not enrollment:
             return Response(status=404)
 
+        if check_streak:
+            should_celebrate = should_celebrate_streak(celebration)
+            resp = {
+                "should_celebrate": should_celebrate
+            }
+            return Response(resp, status=201 if should_celebrate else 200)
+
         defaults = {}
         if first_section is not None:
             defaults['celebrate_first_section'] = first_section
 
         if defaults:
-            _, created = CourseEnrollmentCelebration.objects.update_or_create(enrollment=enrollment, defaults=defaults)
+            celebration, created = CourseEnrollmentCelebration.objects.update_or_create(enrollment=enrollment, defaults=defaults)
             return Response(status=201 if created else 200)
         else:
             return Response(status=200)  # just silently allow it

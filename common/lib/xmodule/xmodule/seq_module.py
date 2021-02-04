@@ -315,11 +315,7 @@ class SequenceModule(SequenceFields, ProctoringFields, XModule):
         content_type_gating_service = self.runtime.service(self, 'content_type_gating')
         if content_type_gating_service:
             self.gated_sequence_paywall = content_type_gating_service.check_children_for_content_type_gating_paywall(
-<<<<<<< HEAD
                 self, self.course_id
-=======
-                self, self._get_course(), self.course_id
->>>>>>> Return content type gate for staff users when masquerading as the Learner in Audit or Learner in Limited Access Roles
             )
 
     def student_view(self, context):
@@ -649,11 +645,7 @@ class SequenceModule(SequenceFields, ProctoringFields, XModule):
             contains_content_type_gated_content = False
             if content_type_gating_service:
                 contains_content_type_gated_content = content_type_gating_service.check_children_for_content_type_gating_paywall(  # pylint:disable=line-too-long
-<<<<<<< HEAD
                     item, self.course_id
-=======
-                    item, self._get_course(), self.course_id
->>>>>>> Return content type gate for staff users when masquerading as the Learner in Audit or Learner in Limited Access Roles
                 ) is not None
             iteminfo = {
                 'content': content,

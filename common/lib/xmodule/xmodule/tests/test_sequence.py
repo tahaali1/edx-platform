@@ -428,19 +428,17 @@ class SequenceBlockTestCase(XModuleXmlImportTest):
         """
         self.sequence_5_1.xmodule_runtime._services['bookmarks'] = None  # pylint: disable=protected-access
         ContentTypeGatingConfig.objects.create(enabled=True, enabled_as_of=datetime(2018, 1, 1))
-        with patch.object(SequenceModule, '_get_course') as mock_course:
-            mock_course.return_value = self.course
-            metadata = json.loads(self.sequence_5_1.handle_ajax('metadata', {}))
-            self.assertEqual(metadata['items'][0]['contains_content_type_gated_content'], False)
+        metadata = json.loads(self.sequence_5_1.handle_ajax('metadata', {}))
+        self.assertEqual(metadata['items'][0]['contains_content_type_gated_content'], False)
 
-            # When a block contains content type gated problems, set the contains_content_type_gated_content field
-            self.sequence_5_1.get_children()[0].get_children()[0].graded = True
-            self.sequence_5_1.runtime._services['content_type_gating'] = Mock(return_value=Mock(  # pylint: disable=protected-access
-                enabled_for_enrollment=Mock(return_value=True),
-                content_type_gate_for_block=Mock(return_value=Fragment('i_am_gated'))
-            ))
-            metadata = json.loads(self.sequence_5_1.handle_ajax('metadata', {}))
-            self.assertEqual(metadata['items'][0]['contains_content_type_gated_content'], True)
+        # When a block contains content type gated problems, set the contains_content_type_gated_content field
+        self.sequence_5_1.get_children()[0].get_children()[0].graded = True
+        self.sequence_5_1.runtime._services['content_type_gating'] = Mock(return_value=Mock(  # pylint: disable=protected-access
+            enabled_for_enrollment=Mock(return_value=True),
+            content_type_gate_for_block=Mock(return_value=Fragment('i_am_gated'))
+        ))
+        metadata = json.loads(self.sequence_5_1.handle_ajax('metadata', {}))
+        self.assertEqual(metadata['items'][0]['contains_content_type_gated_content'], True)
 
     def get_context_dict_from_string(self, data):
         """

@@ -269,11 +269,7 @@ class IndexQueryTestCase(ModuleStoreTestCase):
     NUM_PROBLEMS = 20
 
     @ddt.data(
-<<<<<<< HEAD
         (ModuleStoreEnum.Type.mongo, 10, 172),
-=======
-        (ModuleStoreEnum.Type.mongo, 11, 172),
->>>>>>> Return content type gate for staff users when masquerading as the Learner in Audit or Learner in Limited Access Roles
         (ModuleStoreEnum.Type.split, 4, 168),
     )
     @ddt.unpack
