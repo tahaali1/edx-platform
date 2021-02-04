@@ -210,7 +210,7 @@ def generate_user_certificates(student, course_key, course=None, insecure=False,
 
     if beta_testers_queryset.filter(username=student.username):
         message = u'Cancelling course certificate generation for user [{}] against course [{}], user is a Beta Tester.'
-        log.info(message.format(student.username, course_key))
+        log.info(message.format(student.username, course_key))  # lint-amnesty, pylint: disable=logging-format-interpolation
         return
 
     xqueue = XQueueCertInterface()
@@ -228,7 +228,7 @@ def generate_user_certificates(student, course_key, course=None, insecure=False,
     )
 
     message = u'Queued Certificate Generation task for {user} : {course}'
-    log.info(message.format(user=student.id, course=course_key))
+    log.info(message.format(user=student.id, course=course_key))  # lint-amnesty, pylint: disable=logging-format-interpolation
 
     # If cert_status is not present in certificate valid_statuses (for example unverified) then
     # add_cert returns None and raises AttributeError while accessing cert attributes.
