@@ -194,7 +194,7 @@ class ConditionalBlock(
         """
         Create an instance of the Conditional XBlock.
         """
-        super(ConditionalBlock, self).__init__(*args, **kwargs)
+        super(ConditionalBlock, self).__init__(*args, **kwargs)  # lint-amnesty, pylint: disable=super-with-arguments
         # Convert sources xml_attribute to a ReferenceList field type so Location/Locator
         # substitution can be done.
         if not self.sources_list:
@@ -208,7 +208,7 @@ class ConditionalBlock(
                     for item in ConditionalBlock.parse_sources(self.xml_attributes)
                 ]
 
-    def is_condition_satisfied(self):
+    def is_condition_satisfied(self):  # lint-amnesty, pylint: disable=missing-function-docstring
         attr_name = self.conditions_map[self.conditional_attr]
 
         if self.conditional_value and self.get_required_blocks:
@@ -221,7 +221,7 @@ class ConditionalBlock(
                     if module is not None:
                         # We do not want to log when module is None, and it is when requester
                         # does not have access to the requested required module.
-                        log.warning(
+                        log.warning(  # lint-amnesty, pylint: disable=logging-not-lazy
                             "Error in conditional module: " +
                             "required module {module} has no {module_attr}".format(
                                 module=module,
@@ -365,7 +365,7 @@ class ConditionalBlock(
                 try:
                     descriptor = system.process_xml(etree.tostring(child, encoding='unicode'))
                     children.append(descriptor.scope_ids.usage_id)
-                except:
+                except:  # lint-amnesty, pylint: disable=bare-except
                     msg = "Unable to load child when parsing Conditional."
                     log.exception(msg)
                     system.error_tracker(msg)
@@ -395,7 +395,7 @@ class ConditionalBlock(
         return xml_object
 
     def validate(self):
-        validation = super(ConditionalBlock, self).validate()
+        validation = super(ConditionalBlock, self).validate()  # lint-amnesty, pylint: disable=super-with-arguments
         if not self.sources_list:
             conditional_validation = StudioValidation(self.location)
             conditional_validation.add(
@@ -412,7 +412,7 @@ class ConditionalBlock(
 
     @property
     def non_editable_metadata_fields(self):
-        non_editable_fields = super(ConditionalBlock, self).non_editable_metadata_fields
+        non_editable_fields = super(ConditionalBlock, self).non_editable_metadata_fields  # lint-amnesty, pylint: disable=super-with-arguments
         non_editable_fields.extend([
             ConditionalBlock.due,
             ConditionalBlock.show_tag_list,
