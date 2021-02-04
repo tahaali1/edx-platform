@@ -1,7 +1,8 @@
+# lint-amnesty, pylint: disable=django-not-configured
+# pylint: disable=cyclic-import
 """
 Tests of the LMS XBlock Mixin
 """
-# pylint: disable=cyclic-import
 
 import ddt
 from xblock.validation import ValidationMessage

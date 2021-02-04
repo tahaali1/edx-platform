@@ -387,7 +387,7 @@ class EditInfo(object):
         self.original_usage_version = edit_info.get('original_usage_version', None)
 
     def __repr__(self):
-  # lint-amnesty, pylint: disable=bad-continuation, bad-option-value
+        # lint-amnesty, pylint: disable=bad-continuation, bad-option-value
         return ("{classname}(previous_version={self.previous_version}, "
                 "update_version={self.update_version}, "
                 "source_version={source_version}, "
@@ -474,7 +474,7 @@ class BlockData(object):
         return self.asides
 
     def __repr__(self):
-  # lint-amnesty, pylint: disable=bad-continuation, bad-option-value
+        # lint-amnesty, pylint: disable=bad-continuation, bad-option-value
         return ("{classname}(fields={self.fields}, "
                 "block_type={self.block_type}, "
                 "definition={self.definition}, "

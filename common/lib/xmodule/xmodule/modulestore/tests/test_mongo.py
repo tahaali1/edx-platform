@@ -13,7 +13,7 @@ import pymongo
 import pytest
 import six
 
-  # lint-amnesty, pylint: disable=bad-continuation, bad-option-value
+# lint-amnesty, pylint: disable=bad-continuation, bad-option-value
 # pylint: disable=protected-access
 from django.test import TestCase
 # pylint: enable=E0611
