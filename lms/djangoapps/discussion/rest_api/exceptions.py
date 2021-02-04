@@ -7,17 +7,17 @@ from rest_framework.exceptions import APIException
 
 class DiscussionDisabledError(ObjectDoesNotExist):
     """ Discussion is disabled. """
-    pass
+    pass  # lint-amnesty, pylint: disable=unnecessary-pass
 
 
 class ThreadNotFoundError(ObjectDoesNotExist):
     """ Thread was not found. """
-    pass
+    pass  # lint-amnesty, pylint: disable=unnecessary-pass
 
 
 class CommentNotFoundError(ObjectDoesNotExist):
     """ Comment was not found. """
-    pass
+    pass  # lint-amnesty, pylint: disable=unnecessary-pass
 
 
 class DiscussionBlackedOutException(APIException):

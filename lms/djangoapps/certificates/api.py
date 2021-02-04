@@ -1,8 +1,10 @@
-"""Certificates API
+"""
+Certificates API
 
-This is a Python API for generating certificates asynchronously.
-Other Django apps should use the API functions defined in this module
-rather than importing Django models directly.
+This provides APIs for generating course certificates asynchronously.
+
+Other Django apps should use the API functions defined here in this module; other apps should not import the
+certificates models or any other certificates modules.
 """
 
 
@@ -306,9 +308,9 @@ def certificate_downloadable_status(student, course_key):
 
     response_data = {
         'is_downloadable': False,
-        'is_generating': True if current_status['status'] in [CertificateStatuses.generating,
+        'is_generating': True if current_status['status'] in [CertificateStatuses.generating,  # lint-amnesty, pylint: disable=simplifiable-if-expression
                                                               CertificateStatuses.error] else False,
-        'is_unverified': True if current_status['status'] == CertificateStatuses.unverified else False,
+        'is_unverified': True if current_status['status'] == CertificateStatuses.unverified else False,  # lint-amnesty, pylint: disable=simplifiable-if-expression
         'download_url': None,
         'uuid': None,
     }
@@ -562,7 +564,7 @@ def get_language_specific_template(language, templates):
     return None
 
 
-def get_all_languages_or_default_template(templates):
+def get_all_languages_or_default_template(templates):  # lint-amnesty, pylint: disable=missing-function-docstring
     for template in templates:
         if template.language == '':
             return template
