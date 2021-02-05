@@ -172,8 +172,12 @@ def anonymous_id_for_user(user, course_id, save='DEPRECATED'):
     # This part is for ability to get xblock instance in xblock_noauth handlers, where user is unauthenticated.
     assert user
 
-    if save is not 'DEPRECATED':
-        warnings.warn("anonymous_id_for_user no longer accepts save param and now always saves the ID in the database", DeprecationWarning)
+    if save != 'DEPRECATED':
+        warnings.warn(
+            "anonymous_id_for_user no longer accepts save param and now "
+            "always saves the ID in the database",
+            DeprecationWarning
+        )
 
     if user.is_anonymous:
         return None
@@ -859,8 +863,12 @@ def unique_id_for_user(user, save='DEPRECATED'):
     Keyword arguments:
     save -- Deprecated and ignored: ID is always saved in an AnonymousUserId object
     """
-    if save is not 'DEPRECATED':
-        warnings.warn("unique_id_for_user no longer accepts save param and now always saves the ID in the database", DeprecationWarning)
+    if save != 'DEPRECATED':
+        warnings.warn(
+            "unique_id_for_user no longer accepts save param and now "
+            "always saves the ID in the database",
+            DeprecationWarning
+        )
     # Setting course_id to '' makes it not affect the generated hash,
     # and thus produce the old per-student anonymous id
     return anonymous_id_for_user(user, None)
