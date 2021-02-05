@@ -50,7 +50,7 @@ def _update_cert_settings_on_pacing_change(sender, updated_course_overview, **kw
 
 
 @receiver(post_save, sender=CertificateWhitelist, dispatch_uid="append_certificate_whitelist")
-def _listen_for_certificate_whitelist_append(sender, instance, **kwargs):
+def _listen_for_certificate_whitelist_append(sender, instance, **kwargs): # pylint: disable=unused-argument
     """
     Listen for a user being added to or modified on the whitelist (allowlist)
     """
